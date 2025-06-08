@@ -1,9 +1,8 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:provider/provider.dart';
-import 'user_provider.dart';
+import 'user_provider.dart'; // Убедись, что тут подключен провайдер, который содержит userId
 
 class PasswordRecoveryPage extends StatefulWidget {
   const PasswordRecoveryPage({super.key});
@@ -30,7 +29,7 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
       _showMessage('Введите email');
       return;
     }
-    // Генерируем 4-значный код
+
     _generatedCode = (Random().nextInt(9000) + 1000).toString();
     setState(() {
       _codeSent = true;
@@ -38,7 +37,8 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
       _codeController.clear();
       _newPasswordController.clear();
     });
-    // Тут нужно реализовать отправку email с кодом
+
+    // Здесь в проде нужно реализовать отправку кода на email
     _showMessage(
       'Код восстановления отправлен на $email\n(код для теста: $_generatedCode)',
     );
@@ -56,31 +56,22 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
   }
 
   Future<void> _saveNewPassword() async {
-    // Получаем userId из провайдера
-    final userId = context.read<UserProvider>().userId;
-    print('Текущий userId: $userId');
-
     final email = _emailController.text.trim();
     final newPassword = _newPasswordController.text;
+
     if (newPassword.isEmpty || newPassword.length < 6) {
       _showMessage('Пароль должен быть минимум 6 символов');
       return;
     }
+
     try {
       final response = await _supabase
-          .from('users')
+          .from('profiles') // Обращаемся к правильной таблице
           .update({'password': newPassword})
-          .eq('email', email);
-      //.execute();
+          .eq('email', email)
+          .select(); // Нужно указать .select() чтобы получить результат
 
-      if (response.error != null) {
-        _showMessage(
-          'Ошибка при обновлении пароля: ${response.error!.message}',
-        );
-        return;
-      }
-
-      if ((response.data as List).isEmpty) {
+      if (response.isEmpty) {
         _showMessage('Пользователь с таким email не найден');
         return;
       }
