@@ -40,11 +40,6 @@ class _AuthPageState extends State<AuthPage> {
           .eq('password', password)
           .single();
 
-      if (response == null) {
-        _showMessage('Неверный email или пароль');
-        return;
-      }
-
       final int userId = response['user_id'];
       Provider.of<UserProvider>(context, listen: false).setUserId(userId);
 
@@ -98,7 +93,7 @@ class _AuthPageState extends State<AuthPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
-                  'ИП Подарок',
+                  'Подарок',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
