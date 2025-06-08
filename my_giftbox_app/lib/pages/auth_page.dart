@@ -7,6 +7,7 @@ import 'admin_panel.dart';
 import 'recover_password.dart';
 import 'register.dart';
 import 'user_provider.dart';
+import 'package:flutter/services.dart'; // Для SystemNavigator.pop()
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -37,7 +38,6 @@ class _AuthPageState extends State<AuthPage> {
     });
 
     try {
-      // Запросим профиль по email
       final response = await _supabase
           .from('profiles')
           .select()
@@ -50,7 +50,6 @@ class _AuthPageState extends State<AuthPage> {
         return;
       }
 
-      // В таблице поле с паролем называется password (plain text)
       final storedPassword = response['password'] as String?;
 
       if (storedPassword == null || storedPassword != password) {
@@ -58,15 +57,12 @@ class _AuthPageState extends State<AuthPage> {
         return;
       }
 
-      // Получаем id и роль
       final userId = response['id'] as String;
       final role = response['role'] as String;
 
-      // Сохраняем в провайдер пользователя
       Provider.of<UserProvider>(context, listen: false).setUserId(userId);
       _showMessage('Успешный вход!');
 
-      // Навигация в зависимости от роли
       if (role == 'admin') {
         Navigator.pushReplacement(
           context,
@@ -247,6 +243,30 @@ class _AuthPageState extends State<AuthPage> {
                       color: Colors.purple,
                       fontWeight: FontWeight.w600,
                     ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Кнопка выхода из приложения
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                      horizontal: 40,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () {
+                    SystemNavigator.pop();
+                  },
+                  child: const Text(
+                    'Выйти из приложения',
+                    style: TextStyle(fontSize: 16),
                   ),
                 ),
               ],
