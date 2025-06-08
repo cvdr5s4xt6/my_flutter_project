@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
 
 import 'menu.dart';
 import 'admin_panel.dart';
 import 'recover_password.dart';
-
-import 'package:provider/provider.dart';
+import 'register.dart';
 import 'user_provider.dart';
 
 class AuthPage extends StatefulWidget {
@@ -18,10 +18,10 @@ class AuthPage extends StatefulWidget {
 class _AuthPageState extends State<AuthPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-
-  final _supabase = Supabase.instance.client;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   bool _obscurePassword = true;
+  bool _isLoading = false;
 
   Future<void> _signIn() async {
     final email = _emailController.text.trim();
@@ -32,20 +32,42 @@ class _AuthPageState extends State<AuthPage> {
       return;
     }
 
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
+      // Запросим профиль по email
       final response = await _supabase
-          .from('users')
+          .from('profiles')
           .select()
           .eq('email', email)
-          .eq('password', password)
-          .single();
+          .limit(1)
+          .maybeSingle();
 
-      final int userId = response['user_id'];
+      if (response == null) {
+        _showMessage('Пользователь не найден');
+        return;
+      }
+
+      // В таблице поле с паролем называется password (plain text)
+      final storedPassword = response['password'] as String?;
+
+      if (storedPassword == null || storedPassword != password) {
+        _showMessage('Неверный пароль');
+        return;
+      }
+
+      // Получаем id и роль
+      final userId = response['id'] as String;
+      final role = response['role'] as String;
+
+      // Сохраняем в провайдер пользователя
       Provider.of<UserProvider>(context, listen: false).setUserId(userId);
-
       _showMessage('Успешный вход!');
 
-      if (userId == 2) {
+      // Навигация в зависимости от роли
+      if (role == 'admin') {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const AdminPanel()),
@@ -56,10 +78,12 @@ class _AuthPageState extends State<AuthPage> {
           MaterialPageRoute(builder: (context) => const MenuPage()),
         );
       }
-    } on PostgrestException {
-      _showMessage('Неверный email или пароль');
     } catch (e) {
       _showMessage('Ошибка входа: ${e.toString()}');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -116,13 +140,13 @@ class _AuthPageState extends State<AuthPage> {
                   decoration: InputDecoration(
                     hintText: 'example@mail.com',
                     filled: true,
-                    fillColor: const Color(0xFF4B0082).withOpacity(0.1),
+                    fillColor: Colors.white,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
                     ),
                   ),
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: Colors.black),
                 ),
 
                 const SizedBox(height: 16),
@@ -141,7 +165,7 @@ class _AuthPageState extends State<AuthPage> {
                   decoration: InputDecoration(
                     hintText: 'Введите пароль',
                     filled: true,
-                    fillColor: const Color(0xFF4B0082).withOpacity(0.1),
+                    fillColor: Colors.white,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -151,7 +175,7 @@ class _AuthPageState extends State<AuthPage> {
                         _obscurePassword
                             ? Icons.visibility_off
                             : Icons.visibility,
-                        color: Colors.white70,
+                        color: Colors.grey,
                       ),
                       onPressed: () {
                         setState(() {
@@ -160,7 +184,7 @@ class _AuthPageState extends State<AuthPage> {
                       },
                     ),
                   ),
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: Colors.black),
                 ),
 
                 const SizedBox(height: 8),
@@ -200,8 +224,30 @@ class _AuthPageState extends State<AuthPage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  onPressed: _signIn,
-                  child: const Text('Войти', style: TextStyle(fontSize: 16)),
+                  onPressed: _isLoading ? null : _signIn,
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('Войти', style: TextStyle(fontSize: 16)),
+                ),
+
+                const SizedBox(height: 16),
+
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const RegisterPage(),
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    'Создать аккаунт',
+                    style: TextStyle(
+                      color: Colors.purple,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ],
             ),

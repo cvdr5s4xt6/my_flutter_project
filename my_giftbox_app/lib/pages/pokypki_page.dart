@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-import 'package:provider/provider.dart';
-import 'user_provider.dart';
+//import 'package:provider/provider.dart';
+//import 'user_provider.dart';
 
 class PokypkiPage extends StatefulWidget {
   final List<Map<String, dynamic>> boxes;
@@ -119,10 +118,7 @@ class _PokypkiPageState extends State<PokypkiPage> {
     final user = supabase.auth.currentUser;
     if (user == null) return;
 
-    // Добавляем получение userId из провайдера
-    final userIdFromProvider = context.read<UserProvider>().userId;
-    print('Текущий userId из UserProvider: $userIdFromProvider');
-
+    //final userIdFromProvider = context.read<UserProvider>().userId;
     final userId = user.id;
     final fullName =
         user.userMetadata?['full_name'] ?? 'Неизвестный пользователь';
@@ -138,32 +134,43 @@ class _PokypkiPageState extends State<PokypkiPage> {
       };
     }).toList();
 
-    await supabase.from('orders').insert({
+    final insertResponse = await supabase.from('orders').insert({
       'user_id': userId,
       'full_name': fullName,
       'status': 'Новый',
       'items': orderItems,
       'requested_photo': false,
-    });
+    }).select();
+
+    if (insertResponse.isEmpty) {
+      print('Ошибка вставки заказа');
+      return;
+    }
+
+    final insertedOrder = insertResponse.first;
 
     if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            UserOrderPage(fullName: fullName, orderItems: orderItems),
+        builder: (_) => UserOrderPage(
+          orderId: insertedOrder['id'],
+          fullName: fullName,
+          orderItems: orderItems,
+        ),
       ),
     );
   }
 }
 
-// Страница заказа пользователя
 class UserOrderPage extends StatelessWidget {
+  final int orderId;
   final String fullName;
   final List<Map<String, dynamic>> orderItems;
 
   const UserOrderPage({
     super.key,
+    required this.orderId,
     required this.fullName,
     required this.orderItems,
   });
@@ -194,11 +201,14 @@ class UserOrderPage extends StatelessWidget {
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () async {
-                // Запрос на фото отправляется
                 await Supabase.instance.client
                     .from('orders')
                     .update({'requested_photo': true})
-                    .eq('full_name', fullName);
+                    .eq('id', orderId);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Запрос на фото отправлен')),
+                );
               },
               child: const Text('Запросить фото подарка'),
             ),
