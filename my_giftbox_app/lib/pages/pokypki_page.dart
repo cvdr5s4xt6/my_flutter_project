@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 //import 'package:provider/provider.dart';
 //import 'user_provider.dart';
+//import 'dart:convert';
+
+import 'user_orders.dart';
+import 'user_order_details.dart';
 
 class PokypkiPage extends StatefulWidget {
   final List<Map<String, dynamic>> boxes;
@@ -36,12 +40,42 @@ class _PokypkiPageState extends State<PokypkiPage> {
       appBar: AppBar(
         title: const Text('Корзина'),
         actions: [
-          TextButton(
-            onPressed: () async => await placeOrder(context),
-            child: const Text(
-              'Заказать',
-              style: TextStyle(color: Colors.white),
-            ),
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              if (value == 'list') {
+                // Просто перейти в "Мои заказы"
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => UserOrdersPage(userId: '')),
+                );
+              } else if (value == 'details') {
+                // Оформить заказ и перейти к деталям
+                final order = await placeOrder(context);
+                if (order == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Ошибка оформления заказа')),
+                  );
+                  return;
+                }
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => UserOrderDetailsPage(order: order),
+                  ),
+                );
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'list',
+                child: Text('Перейти в "Мои заказы"'),
+              ),
+              const PopupMenuItem(
+                value: 'details',
+                child: Text('К деталям нового заказа'),
+              ),
+            ],
+            icon: const Icon(Icons.shopping_cart_checkout),
           ),
         ],
       ),
@@ -114,11 +148,20 @@ class _PokypkiPageState extends State<PokypkiPage> {
     );
   }
 
-  Future<void> placeOrder(BuildContext context) async {
+  Future<Map<String, dynamic>?> placeOrder(BuildContext context) async {
     final user = supabase.auth.currentUser;
-    if (user == null) return;
+    if (user == null) return null;
 
-    //final userIdFromProvider = context.read<UserProvider>().userId;
+    if (widget.cart.isEmpty) {
+      // Корзина пустая, нельзя оформить заказ
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Корзина пуста, невозможно оформить заказ'),
+        ),
+      );
+      return null;
+    }
+
     final userId = user.id;
     final fullName =
         user.userMetadata?['full_name'] ?? 'Неизвестный пользователь';
@@ -134,87 +177,40 @@ class _PokypkiPageState extends State<PokypkiPage> {
       };
     }).toList();
 
+    final totalPrice = orderItems.fold<double>(
+      0,
+      (sum, item) => sum + (item['quantity'] as int) * 500,
+    );
+
     final insertResponse = await supabase.from('orders').insert({
       'user_id': userId,
       'full_name': fullName,
       'status': 'Новый',
       'items': orderItems,
       'requested_photo': false,
+      'total_price': totalPrice,
     }).select();
 
     if (insertResponse.isEmpty) {
       print('Ошибка вставки заказа');
-      return;
+      return null;
     }
 
-    final insertedOrder = insertResponse.first;
+    // Очистка корзины
+    widget.cart.clear();
 
-    if (!mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => UserOrderPage(
-          orderId: insertedOrder['id'],
-          fullName: fullName,
-          orderItems: orderItems,
+    // Обновление UI и сообщение
+    if (mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Заказ успешно оформлен!'),
+          duration: Duration(seconds: 2),
         ),
-      ),
-    );
-  }
-}
+      );
+    }
 
-class UserOrderPage extends StatelessWidget {
-  final int orderId;
-  final String fullName;
-  final List<Map<String, dynamic>> orderItems;
-
-  const UserOrderPage({
-    super.key,
-    required this.orderId,
-    required this.fullName,
-    required this.orderItems,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Ваш заказ')),
-      body: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'ФИО: $fullName',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            const Text('Ваш заказ:'),
-            ...orderItems.map(
-              (item) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(
-                  '${item['name']} | Цвет: ${item['color']} | Размер: ${item['size']} | Кол-во: ${item['quantity']}',
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () async {
-                await Supabase.instance.client
-                    .from('orders')
-                    .update({'requested_photo': true})
-                    .eq('id', orderId);
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Запрос на фото отправлен')),
-                );
-              },
-              child: const Text('Запросить фото подарка'),
-            ),
-          ],
-        ),
-      ),
-    );
+    final insertedOrder = insertResponse.first as Map<String, dynamic>;
+    return insertedOrder;
   }
 }

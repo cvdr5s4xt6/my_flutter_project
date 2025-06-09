@@ -1,103 +1,79 @@
 import 'package:flutter/material.dart';
+import 'package:my_giftbox_app/pages/user_order_details.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'auth_page.dart';
-
 import 'package:provider/provider.dart'; // обязательно импорт Provider
 import 'user_provider.dart'; // импорт твоего UserProvider
 
-class AdminPanel extends StatefulWidget {
-  const AdminPanel({super.key});
+class AdminOrdersPage extends StatefulWidget {
+  const AdminOrdersPage({super.key});
 
   @override
-  State<AdminPanel> createState() => _AdminPanelState();
+  State<AdminOrdersPage> createState() => _AdminOrdersPageState();
 }
 
-class _AdminPanelState extends State<AdminPanel> {
+class _AdminOrdersPageState extends State<AdminOrdersPage> {
   final supabase = Supabase.instance.client;
-  List<Map<String, dynamic>> orders = [];
-  bool loading = true;
+  List<dynamic> orders = [];
 
   @override
   void initState() {
     super.initState();
-    fetchOrders();
+    loadAllOrders();
   }
 
-  Future<void> fetchOrders() async {
+  Future<void> loadAllOrders() async {
     final response = await supabase
         .from('orders')
-        .select('*')
-        .order('id', ascending: false);
+        .select()
+        .order('created_at', ascending: false);
+
     setState(() {
-      orders = List<Map<String, dynamic>>.from(response);
-      loading = false;
+      orders = response;
     });
+  }
+
+  Future<void> markAsCollected(int orderId, String userId) async {
+    await supabase
+        .from('orders')
+        .update({'status': 'Собран'})
+        .eq('id', orderId);
+
+    // можно тут отправить уведомление или пуш
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Статус обновлён')));
+    await loadAllOrders();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Получаем userId из UserProvider
-    final userId = context.read<UserProvider>().userId;
-
-    // Теперь можно использовать userId, например, для фильтрации или отображения
-    print('Текущий userId: $userId');
-
     return Scaffold(
-      appBar: AppBar(title: const Text('Админ Панель')),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : orders.isEmpty
-          ? const Center(child: Text('Нет заказов'))
-          : ListView.builder(
-              itemCount: orders.length,
-              itemBuilder: (context, index) {
-                final order = orders[index];
-                final items = List<Map<String, dynamic>>.from(order['items']);
-                return Card(
-                  margin: const EdgeInsets.all(12),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Заказ #${order['id']}'),
-                        Text('ФИО: ${order['full_name']}'),
-                        Text('Статус: ${order['status']}'),
-                        const SizedBox(height: 8),
-                        const Text('Товары:'),
-                        ...items.map(
-                          (item) => Text(
-                            '${item['name']} | Цвет: ${item['color']} | Размер: ${item['size']} | Кол-во: ${item['quantity']}',
-                          ),
-                        ),
-                        if (order['requested_photo'] == true)
-                          Column(
-                            children: [
-                              const SizedBox(height: 12),
-                              const Text('Запрошено фото подарка'),
-                              order['photo_url'] != null
-                                  ? Image.network(
-                                      order['photo_url'],
-                                      height: 150,
-                                    )
-                                  : const Text('Фото пока не загружено'),
-                            ],
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+      appBar: AppBar(title: const Text('Админ: Заказы')),
+      body: ListView.builder(
+        itemCount: orders.length,
+        itemBuilder: (context, index) {
+          final order = orders[index];
+          return ListTile(
+            title: Text('${order['full_name']} — ${order['status']}'),
+            subtitle: Text(
+              'Дата: ${order['created_at']}, Сумма: ${order['total_price']} руб',
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const AuthPage()),
+            trailing: ElevatedButton(
+              onPressed: order['status'] == 'Собран'
+                  ? null
+                  : () => markAsCollected(order['id'], order['user_id']),
+              child: const Text('Собрать'),
+            ),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => UserOrderDetailsPage(order: order),
+              ),
+            ),
           );
         },
-        child: const Icon(Icons.logout),
       ),
     );
   }

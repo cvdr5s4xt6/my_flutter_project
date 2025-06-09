@@ -66,7 +66,7 @@ class _AuthPageState extends State<AuthPage> {
       if (role == 'admin') {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const AdminPanel()),
+          MaterialPageRoute(builder: (context) => const AdminOrdersPage()),
         );
       } else {
         Navigator.pushReplacement(
