@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-//import 'package:provider/provider.dart';
-//import 'user_provider.dart';
-//import 'dart:convert';
+import 'package:provider/provider.dart';
+import 'user_provider.dart';
 
 import 'user_orders.dart';
 import 'user_order_details.dart';
+
 
 class PokypkiPage extends StatefulWidget {
   final List<Map<String, dynamic>> boxes;
@@ -36,20 +36,36 @@ class _PokypkiPageState extends State<PokypkiPage> {
         .where((box) => widget.cart.containsKey(box['box_id'] as int))
         .toList();
 
+    final userId = context.watch<UserProvider>().userId;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Корзина'),
         actions: [
           PopupMenuButton<String>(
             onSelected: (value) async {
+              if (userId == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Ошибка: пользователь не авторизован'),
+                  ),
+                );
+                return;
+              }
+
               if (value == 'list') {
-                // Просто перейти в "Мои заказы"
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => UserOrdersPage(userId: '')),
+                  MaterialPageRoute(
+                    builder: (_) => UserOrdersPage(
+                      userId: userId,
+                      boxes: widget.boxes,
+                      cart: widget.cart,
+                      colorMap: widget.colorMap,
+                    ),
+                  ),
                 );
               } else if (value == 'details') {
-                // Оформить заказ и перейти к деталям
                 final order = await placeOrder(context);
                 if (order == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -149,11 +165,20 @@ class _PokypkiPageState extends State<PokypkiPage> {
   }
 
   Future<Map<String, dynamic>?> placeOrder(BuildContext context) async {
-    final user = supabase.auth.currentUser;
-    if (user == null) return null;
+    final userId = context.read<UserProvider>().userId;
+
+    print('userId из провайдера: $userId');
+    print('cart: ${widget.cart}');
+    print('boxes: ${widget.boxes}');
+
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ошибка: пользователь не авторизован')),
+      );
+      return null;
+    }
 
     if (widget.cart.isEmpty) {
-      // Корзина пустая, нельзя оформить заказ
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Корзина пуста, невозможно оформить заказ'),
@@ -162,17 +187,25 @@ class _PokypkiPageState extends State<PokypkiPage> {
       return null;
     }
 
-    final userId = user.id;
+    final user = Supabase.instance.client.auth.currentUser;
     final fullName =
-        user.userMetadata?['full_name'] ?? 'Неизвестный пользователь';
+        user?.userMetadata?['full_name']?.toString() ?? 'Без имени';
 
     final orderItems = widget.cart.entries.map((entry) {
-      final box = widget.boxes.firstWhere((b) => b['box_id'] == entry.key);
+      final box =
+          widget.boxes.firstWhere((b) => b['box_id'] == entry.key, orElse: () {
+        return {
+          'name': 'Не найдено',
+          'color_id': 0,
+          'size': 'N/A',
+        };
+      });
+
       return {
         'box_id': entry.key,
-        'name': box['name'],
+        'name': box['name'] ?? '',
         'color': widget.colorMap[box['color_id']] ?? 'Неизвестно',
-        'size': box['size'],
+        'size': box['size'] ?? '',
         'quantity': entry.value,
       };
     }).toList();
@@ -182,35 +215,44 @@ class _PokypkiPageState extends State<PokypkiPage> {
       (sum, item) => sum + (item['quantity'] as int) * 500,
     );
 
-    final insertResponse = await supabase.from('orders').insert({
-      'user_id': userId,
-      'full_name': fullName,
-      'status': 'Новый',
-      'items': orderItems,
-      'requested_photo': false,
-      'total_price': totalPrice,
-    }).select();
+    try {
+      final response = await supabase.from('orders').insert({
+        'user_id': userId,
+        'full_name': fullName,
+        'status': 'Новый',
+        'items': orderItems,
+        'requested_photo': false,
+        'photo_url': null,
+        'total_price': totalPrice,
+      }).select();
 
-    if (insertResponse.isEmpty) {
-      print('Ошибка вставки заказа');
+      if (response.isEmpty) {
+        print('Ошибка вставки: пустой ответ от Supabase');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось создать заказ')),
+        );
+        return null;
+      }
+
+      widget.cart.clear();
+
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Заказ успешно оформлен!'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      return response.first as Map<String, dynamic>;
+    } catch (error) {
+      print('Ошибка при создании заказа: $error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка при отправке заказа: $error')),
+      );
       return null;
     }
-
-    // Очистка корзины
-    widget.cart.clear();
-
-    // Обновление UI и сообщение
-    if (mounted) {
-      setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Заказ успешно оформлен!'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-
-    final insertedOrder = insertResponse.first as Map<String, dynamic>;
-    return insertedOrder;
   }
 }

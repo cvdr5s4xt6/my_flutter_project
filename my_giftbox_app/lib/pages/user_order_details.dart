@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
-import 'package:provider/provider.dart';
-import 'user_provider.dart';
+import 'package:provider/provider.dart'; // импорт Provider
+import 'user_provider.dart'; // импорт твоего UserProvider
 
 class UserOrderDetailsPage extends StatelessWidget {
   final Map<String, dynamic> order;
@@ -11,7 +11,11 @@ class UserOrderDetailsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = List<Map<String, dynamic>>.from(order['items']);
+    // Пример получения userId из провайдера (если нужно)
+    final userId = context.watch<UserProvider>().userId;
+
+    final items = List<Map<String, dynamic>>.from(order['items'] ?? []);
+
     return Scaffold(
       appBar: AppBar(title: const Text("Детали заказа")),
       body: Padding(
@@ -24,13 +28,15 @@ class UserOrderDetailsPage extends StatelessWidget {
             Text('Дата: ${order['created_at']}'),
             const Divider(),
             const Text('Состав заказа:'),
+            const SizedBox(height: 8),
             ...items.map(
               (item) => Text(
-                '${item['name']} — ${item['color']}, ${item['size']}, кол-во: ${item['quantity']}',
+                '${item['name']} — ${item['color'] ?? '-'}, ${item['size'] ?? '-'}, кол-во: ${item['quantity']}',
+                style: const TextStyle(fontSize: 16),
               ),
             ),
             const SizedBox(height: 20),
-            Text('Итого: ${order['total_price']} руб'),
+            Text('Итого: ${order['total_price']} руб', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           ],
         ),
       ),

@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
-import 'user_provider.dart'; // Убедись, что тут подключен провайдер, который содержит userId
+import 'user_provider.dart';
 
 class PasswordRecoveryPage extends StatefulWidget {
   const PasswordRecoveryPage({super.key});
@@ -38,7 +38,7 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
       _newPasswordController.clear();
     });
 
-    // Здесь в проде нужно реализовать отправку кода на email
+    // В реальном приложении здесь нужно отправлять код на email пользователя
     _showMessage(
       'Код восстановления отправлен на $email\n(код для теста: $_generatedCode)',
     );
@@ -66,10 +66,10 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
 
     try {
       final response = await _supabase
-          .from('profiles') // Обращаемся к правильной таблице
+          .from('profiles')
           .update({'password': newPassword})
           .eq('email', email)
-          .select(); // Нужно указать .select() чтобы получить результат
+          .select();
 
       if (response.isEmpty) {
         _showMessage('Пользователь с таким email не найден');
@@ -77,7 +77,7 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
       }
 
       _showMessage('Пароль успешно изменён!');
-      Navigator.pop(context); // Возврат на страницу входа
+      Navigator.pop(context);
     } catch (e) {
       _showMessage('Ошибка: ${e.toString()}');
     }
@@ -89,6 +89,9 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Получаем userId из провайдера (если понадобится)
+    final userId = context.watch<UserProvider>().userId;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Восстановление пароля')),
       body: Padding(

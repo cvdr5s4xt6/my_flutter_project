@@ -35,20 +35,23 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
   }
 
   Future<void> markAsCollected(int orderId, String userId) async {
+    // userId можно использовать для логов, уведомлений и т.п.
     await supabase
         .from('orders')
         .update({'status': 'Собран'})
         .eq('id', orderId);
 
-    // можно тут отправить уведомление или пуш
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Статус обновлён')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Статус обновлён')),
+    );
     await loadAllOrders();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Получаем userId из провайдера (если потребуется)
+    final userId = context.watch<UserProvider>().userId;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Админ: Заказы')),
       body: ListView.builder(
@@ -63,7 +66,7 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
             trailing: ElevatedButton(
               onPressed: order['status'] == 'Собран'
                   ? null
-                  : () => markAsCollected(order['id'], order['user_id']),
+                  : () => markAsCollected(order['id'], userId!),
               child: const Text('Собрать'),
             ),
             onTap: () => Navigator.push(
