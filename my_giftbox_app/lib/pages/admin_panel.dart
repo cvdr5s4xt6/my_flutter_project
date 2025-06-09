@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:my_giftbox_app/pages/user_order_details.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'auth_page.dart';
+
 import 'package:provider/provider.dart'; // обязательно импорт Provider
+import 'user_order_details.dart';
 import 'user_provider.dart'; // импорт твоего UserProvider
 
 class AdminOrdersPage extends StatefulWidget {
@@ -35,23 +36,20 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
   }
 
   Future<void> markAsCollected(int orderId, String userId) async {
-    // userId можно использовать для логов, уведомлений и т.п.
     await supabase
         .from('orders')
         .update({'status': 'Собран'})
         .eq('id', orderId);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Статус обновлён')),
-    );
+    // можно тут отправить уведомление или пуш
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Статус обновлён')));
     await loadAllOrders();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Получаем userId из провайдера (если потребуется)
-    final userId = context.watch<UserProvider>().userId;
-
     return Scaffold(
       appBar: AppBar(title: const Text('Админ: Заказы')),
       body: ListView.builder(
@@ -66,7 +64,7 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
             trailing: ElevatedButton(
               onPressed: order['status'] == 'Собран'
                   ? null
-                  : () => markAsCollected(order['id'], userId!),
+                  : () => markAsCollected(order['id'], order['user_id']),
               child: const Text('Собрать'),
             ),
             onTap: () => Navigator.push(

@@ -36,7 +36,10 @@ class UserOrderDetailsPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            Text('Итого: ${order['total_price']} руб', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            Text(
+              'Итого: ${order['total_price']} руб',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
           ],
         ),
       ),

@@ -31,7 +31,6 @@ class _UserOrdersPageState extends State<UserOrdersPage> {
   @override
   void initState() {
     super.initState();
-    // Копируем корзину из виджета, чтобы можно было менять локально
     cart = Map<int, int>.from(widget.cart);
     loadOrders();
   }
@@ -40,6 +39,7 @@ class _UserOrdersPageState extends State<UserOrdersPage> {
     final userId = widget.userId;
 
     if (userId.isEmpty) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = "Ошибка: ID пользователя не задан.";
@@ -54,6 +54,7 @@ class _UserOrdersPageState extends State<UserOrdersPage> {
           .eq('user_id', userId)
           .order('created_at', ascending: false);
 
+      if (!mounted) return;
       setState(() {
         orders = response;
         _isLoading = false;
@@ -61,16 +62,16 @@ class _UserOrdersPageState extends State<UserOrdersPage> {
       });
     } catch (e) {
       debugPrint('Ошибка загрузки заказов: $e');
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = "Ошибка загрузки заказов. Пожалуйста, попробуйте позже.";
       });
     }
-
-    return;
   }
 
-  Future<void> addToCart(int boxId) {
+  Future<void> addToCart(int boxId) async {
+    if (!mounted) return;
     setState(() {
       if (cart.containsKey(boxId)) {
         cart[boxId] = cart[boxId]! + 1;
@@ -79,10 +80,10 @@ class _UserOrdersPageState extends State<UserOrdersPage> {
       }
     });
     debugPrint("Добавлен в корзину: $boxId, теперь в корзине: ${cart[boxId]}");
-    return Future.value();
   }
 
-  Future<void> removeFromCart(int boxId) {
+  Future<void> removeFromCart(int boxId) async {
+    if (!mounted) return;
     setState(() {
       if (cart.containsKey(boxId)) {
         if (cart[boxId]! > 1) {
@@ -93,7 +94,6 @@ class _UserOrdersPageState extends State<UserOrdersPage> {
       }
     });
     debugPrint("Удалён из корзины: $boxId, теперь в корзине: ${cart[boxId] ?? 0}");
-    return Future.value();
   }
 
   @override
@@ -104,6 +104,12 @@ class _UserOrdersPageState extends State<UserOrdersPage> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
+            // Просто возвращаемся назад, если была обычная навигация push
+            Navigator.pop(context);
+
+            // Если нужна замена страницы, можно использовать pushReplacement,
+            // но обычно для возврата удобнее pop
+            /*
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
@@ -116,6 +122,7 @@ class _UserOrdersPageState extends State<UserOrdersPage> {
                 ),
               ),
             );
+            */
           },
         ),
       ),
