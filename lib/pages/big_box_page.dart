@@ -1,29 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:provider/provider.dart';
 import 'user_provider.dart';
 import 'pokypki_page.dart';
 
 enum ItemType { box, candy, marmalade }
 
-class ItemsPage extends StatefulWidget {
+class BigBoxPage extends StatefulWidget {
   final ItemType itemType;
   final String? boxSize;
 
-  const ItemsPage({super.key, required this.itemType, this.boxSize});
+  const BigBoxPage({super.key, required this.itemType, this.boxSize});
 
   @override
-  State<ItemsPage> createState() => _ItemsPageState();
+  State<BigBoxPage> createState() => _BigBoxPageState();
 }
 
-class _ItemsPageState extends State<ItemsPage> {
+class _BigBoxPageState extends State<BigBoxPage> {
   final supabase = Supabase.instance.client;
 
   late final Map<String, dynamic> conf;
   List<Map<String, dynamic>> items = [];
   Map<int, String> typeMap = {};
-  Map<int, int> cart = {};
   int? selectedFilterId;
   bool isLoading = true;
 
@@ -37,6 +35,7 @@ class _ItemsPageState extends State<ItemsPage> {
       'itemQuantityCol': 'quantity_in_stock',
       'fields': 'box_id, photo, quantity_in_stock, color_id, description, size',
       'filterCol': 'color_id',
+      'titleCol': 'description',
     },
     ItemType.candy: {
       'typeTable': 'candy_types',
@@ -47,6 +46,7 @@ class _ItemsPageState extends State<ItemsPage> {
       'itemQuantityCol': 'quantity',
       'fields': 'candy_id, name, quantity, candy_type_id, photo',
       'filterCol': 'candy_type_id',
+      'titleCol': 'name',
     },
     ItemType.marmalade: {
       'typeTable': 'marmalade_types',
@@ -57,6 +57,7 @@ class _ItemsPageState extends State<ItemsPage> {
       'itemQuantityCol': 'quantity',
       'fields': 'marmalade_id, name, quantity, marmalade_type_id, photo',
       'filterCol': 'marmalade_type_id',
+      'titleCol': 'name',
     },
   };
 
@@ -77,11 +78,9 @@ class _ItemsPageState extends State<ItemsPage> {
     };
 
     var query = supabase.from(conf['itemsTable']).select(conf['fields']);
-    // фильтрация по размеру коробки, если box
     if (widget.itemType == ItemType.box && widget.boxSize != null) {
       query = query.eq('size', widget.boxSize!);
     }
-    // фильтр по цвету/типу
     if (selectedFilterId != null) {
       query = query.eq(conf['filterCol'], selectedFilterId!);
     }
@@ -95,45 +94,23 @@ class _ItemsPageState extends State<ItemsPage> {
   Future<void> updateQuantity(int id, int newQuantity) async {
     await supabase
         .from(conf['itemsTable'])
-        .update({
-          if (widget.itemType == ItemType.box) 'quantity_in_stock': newQuantity,
-          if (widget.itemType != ItemType.box) 'quantity': newQuantity,
-        })
+        .update({conf['itemQuantityCol']: newQuantity})
         .eq(conf['itemIdCol'], id);
 
     await loadData();
   }
 
-  void addToCart(int id, int currentQuantity) {
-    if (currentQuantity <= 0) return;
-
-    setState(() => cart[id] = (cart[id] ?? 0) + 1);
-    updateQuantity(id, currentQuantity - 1);
-  }
-
-  void removeFromCart(int id, int currentQuantity) {
-    final currentInCart = cart[id] ?? 0;
-    if (currentInCart <= 0) return;
-
-    setState(() {
-      if (currentInCart == 1) {
-        cart.remove(id);
-      } else {
-        cart[id] = currentInCart - 1;
-      }
-    });
-    updateQuantity(id, currentQuantity + 1);
-  }
-
   void navigateToCartPage() {
+    final cart = context.read<UserProvider>().cart;
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => PokypkiPage(
           boxes: items,
           cart: cart,
-          colorMap: widget.itemType == ItemType.box ? typeMap : {},
-          addToCart: (boxId) async {
+          colorMap: typeMap,
+          addToCart: (int boxId) async {
             final box = items.firstWhere((b) => b[conf['itemIdCol']] == boxId);
             final currentQuantity = box[conf['itemQuantityCol']] as int;
             if (currentQuantity > 0) {
@@ -143,7 +120,7 @@ class _ItemsPageState extends State<ItemsPage> {
               await updateQuantity(boxId, currentQuantity - 1);
             }
           },
-          removeFromCart: (boxId) async {
+          removeFromCart: (int boxId) async {
             if (cart.containsKey(boxId) && cart[boxId]! > 0) {
               final box = items.firstWhere(
                 (b) => b[conf['itemIdCol']] == boxId,
@@ -158,6 +135,9 @@ class _ItemsPageState extends State<ItemsPage> {
               await updateQuantity(boxId, currentQuantity + 1);
             }
           },
+          typeMap: {},
+          itemType: widget.itemType,
+          items: items,
         ),
       ),
     );
@@ -165,31 +145,59 @@ class _ItemsPageState extends State<ItemsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final userId = context.read<UserProvider>().userId;
-    print('Текущий userId: $userId');
-
     final title = {
       ItemType.box: 'Коробки',
       ItemType.candy: 'Конфеты',
       ItemType.marmalade: 'Мармелад',
     }[widget.itemType]!;
 
-    final typeIdKey = {
-      ItemType.box: 'color_id',
-      ItemType.candy: 'candy_type_id',
-      ItemType.marmalade: 'marmalade_type_id',
-    }[widget.itemType]!;
+    final cart = context.watch<UserProvider>().cart;
+
+    final typeIdKey = conf['filterCol'];
+    final titleCol = conf['titleCol'];
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        title: const Text('Корзина', style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.indigo,
         actions: [
-          IconButton(
-            onPressed: navigateToCartPage,
-            icon: const Icon(Icons.shopping_cart),
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.shopping_cart, color: Colors.white),
+                onPressed: () {
+                  print('Корзина нажата');
+                },
+              ),
+              Positioned(
+                right: 6,
+                top: 6,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 18,
+                    minHeight: 18,
+                  ),
+                  child: const Text(
+                    '2',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
+
       body: Column(
         children: [
           Padding(
@@ -204,13 +212,16 @@ class _ItemsPageState extends State<ItemsPage> {
               isExpanded: true,
               items: [
                 const DropdownMenuItem<int?>(value: null, child: Text('Все')),
-                ...typeMap.entries.map(
-                  (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
-                ),
+                ...typeMap.entries
+                    .map(
+                      (e) =>
+                          DropdownMenuItem(value: e.key, child: Text(e.value)),
+                    )
+                    .toList(),
               ],
-              onChanged: (val) {
+              onChanged: (val) async {
                 setState(() => selectedFilterId = val);
-                loadData();
+                await loadData();
               },
             ),
           ),
@@ -227,6 +238,7 @@ class _ItemsPageState extends State<ItemsPage> {
                       final photo = item['photo'] as String?;
                       final quantity = item[conf['itemQuantityCol']] as int;
                       final typeName = typeMap[item[typeIdKey]] ?? 'Неизвестно';
+                      final name = item[titleCol] ?? 'Без названия';
 
                       return Card(
                         margin: const EdgeInsets.all(12),
@@ -257,16 +269,17 @@ class _ItemsPageState extends State<ItemsPage> {
                                 ),
                               const SizedBox(height: 8),
                               Text(
-                                widget.itemType == ItemType.box
-                                    ? 'Цвет: $typeName'
-                                    : 'Тип: $typeName',
+                                name,
                                 style: const TextStyle(
+                                  fontSize: 18,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              if (widget.itemType == ItemType.box &&
-                                  item['description'] != null)
-                                Text('Описание: ${item['description']}'),
+                              Text(
+                                widget.itemType == ItemType.box
+                                    ? 'Цвет: $typeName'
+                                    : 'Тип: $typeName',
+                              ),
                               Text('В наличии: $quantity'),
                               const SizedBox(height: 8),
                               Row(
@@ -275,17 +288,34 @@ class _ItemsPageState extends State<ItemsPage> {
                                   IconButton(
                                     icon: const Icon(Icons.add),
                                     onPressed: quantity > 0
-                                        ? () => addToCart(id, quantity)
+                                        ? () async {
+                                            context
+                                                .read<UserProvider>()
+                                                .addToCart(id);
+                                            await updateQuantity(
+                                              id,
+                                              quantity - 1,
+                                            );
+                                          }
                                         : null,
                                   ),
                                   IconButton(
                                     icon: const Icon(Icons.remove),
                                     onPressed: (cart[id] ?? 0) > 0
-                                        ? () => removeFromCart(id, quantity)
+                                        ? () async {
+                                            context
+                                                .read<UserProvider>()
+                                                .removeFromCart(id);
+                                            await updateQuantity(
+                                              id,
+                                              quantity + 1,
+                                            );
+                                          }
                                         : null,
                                   ),
                                 ],
                               ),
+
                               if ((cart[id] ?? 0) > 0)
                                 Center(
                                   child: Text(

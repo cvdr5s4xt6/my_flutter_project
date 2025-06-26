@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-class UserProvider with ChangeNotifier {
+class UserProvider extends ChangeNotifier {
+  // Данные пользователя
   String? _userId;
   String? _userEmail;
 
@@ -14,6 +15,27 @@ class UserProvider with ChangeNotifier {
 
   void setUserEmail(String email) {
     _userEmail = email;
+    notifyListeners();
+  }
+
+  // Корзина: ключ - id товара, значение - количество
+  final Map<int, int> _cart = {};
+
+  Map<int, int> get cart => Map.unmodifiable(_cart);
+
+  void addToCart(int itemId) {
+    _cart[itemId] = (_cart[itemId] ?? 0) + 1;
+    notifyListeners();
+  }
+
+  void removeFromCart(int itemId) {
+    if (!_cart.containsKey(itemId)) return;
+
+    if (_cart[itemId]! > 1) {
+      _cart[itemId] = _cart[itemId]! - 1;
+    } else {
+      _cart.remove(itemId);
+    }
     notifyListeners();
   }
 }

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:my_giftbox_app/pages/big_box_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
-import 'user_provider.dart';
 
+import 'user_provider.dart';
 import 'user_orders.dart';
 import 'user_order_details.dart';
-
 
 class PokypkiPage extends StatefulWidget {
   final List<Map<String, dynamic>> boxes;
@@ -21,6 +21,10 @@ class PokypkiPage extends StatefulWidget {
     required this.colorMap,
     required this.addToCart,
     required this.removeFromCart,
+    required Map<int, String> typeMap,
+
+    required List<Map<String, dynamic>> items,
+    required ItemType itemType,
   });
 
   @override
@@ -32,11 +36,11 @@ class _PokypkiPageState extends State<PokypkiPage> {
 
   @override
   Widget build(BuildContext context) {
+    final userId = context.watch<UserProvider>().userId;
+
     final selectedBoxes = widget.boxes
         .where((box) => widget.cart.containsKey(box['box_id'] as int))
         .toList();
-
-    final userId = context.watch<UserProvider>().userId;
 
     return Scaffold(
       appBar: AppBar(
@@ -67,26 +71,22 @@ class _PokypkiPageState extends State<PokypkiPage> {
                 );
               } else if (value == 'details') {
                 final order = await placeOrder(context);
-                if (order == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Ошибка оформления заказа')),
+                if (order != null && context.mounted) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => UserOrderDetailsPage(order: order),
+                    ),
                   );
-                  return;
                 }
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => UserOrderDetailsPage(order: order),
-                  ),
-                );
               }
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
+            itemBuilder: (context) => const [
+              PopupMenuItem(
                 value: 'list',
                 child: Text('Перейти в "Мои заказы"'),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'details',
                 child: Text('К деталям нового заказа'),
               ),
@@ -103,7 +103,7 @@ class _PokypkiPageState extends State<PokypkiPage> {
                 final box = selectedBoxes[index];
                 final id = box['box_id'] as int;
                 final photo = box['photo'] as String?;
-                final colorId = box['color_id'] as int;
+                final colorId = box['color_id'] as int? ?? 0;
                 final colorName =
                     widget.colorMap[colorId] ?? 'Неизвестный цвет';
                 final quantity = widget.cart[id] ?? 0;
@@ -167,10 +167,6 @@ class _PokypkiPageState extends State<PokypkiPage> {
   Future<Map<String, dynamic>?> placeOrder(BuildContext context) async {
     final userId = context.read<UserProvider>().userId;
 
-    print('userId из провайдера: $userId');
-    print('cart: ${widget.cart}');
-    print('boxes: ${widget.boxes}');
-
     if (userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ошибка: пользователь не авторизован')),
@@ -187,19 +183,15 @@ class _PokypkiPageState extends State<PokypkiPage> {
       return null;
     }
 
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = supabase.auth.currentUser;
     final fullName =
         user?.userMetadata?['full_name']?.toString() ?? 'Без имени';
 
     final orderItems = widget.cart.entries.map((entry) {
-      final box =
-          widget.boxes.firstWhere((b) => b['box_id'] == entry.key, orElse: () {
-        return {
-          'name': 'Не найдено',
-          'color_id': 0,
-          'size': 'N/A',
-        };
-      });
+      final box = widget.boxes.firstWhere(
+        (b) => b['box_id'] == entry.key,
+        orElse: () => {'name': 'Не найдено', 'color_id': 0, 'size': 'N/A'},
+      );
 
       return {
         'box_id': entry.key,
@@ -227,7 +219,6 @@ class _PokypkiPageState extends State<PokypkiPage> {
       }).select();
 
       if (response.isEmpty) {
-        print('Ошибка вставки: пустой ответ от Supabase');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Не удалось создать заказ')),
         );
@@ -248,7 +239,6 @@ class _PokypkiPageState extends State<PokypkiPage> {
 
       return response.first as Map<String, dynamic>;
     } catch (error) {
-      print('Ошибка при создании заказа: $error');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка при отправке заказа: $error')),
       );

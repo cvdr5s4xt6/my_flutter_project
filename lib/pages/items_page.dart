@@ -41,9 +41,8 @@ class _ItemsPageState extends State<ItemsPage> {
       'itemsTable': 'candies',
       'itemIdCol': 'candy_id',
       'itemQuantityCol': 'quantity',
-      'fields':
-          'candy_id, name, quantity, candy_type_id, photo', // Убрали color_id
-      'filterCol': 'candy_type_id', // фильтрация по candy_type_id
+      'fields': 'candy_id, name, quantity, candy_type_id, photo',
+      'filterCol': 'candy_type_id',
     },
     ItemType.marmalade: {
       'typeTable': 'marmalade_types',
@@ -52,9 +51,8 @@ class _ItemsPageState extends State<ItemsPage> {
       'itemsTable': 'marmalades',
       'itemIdCol': 'marmalade_id',
       'itemQuantityCol': 'quantity',
-      'fields':
-          'marmalade_id, name, quantity, marmalade_type_id, photo', // Убрали color_id
-      'filterCol': 'marmalade_type_id', // фильтрация по marmalade_type_id
+      'fields': 'marmalade_id, name, quantity, marmalade_type_id, photo',
+      'filterCol': 'marmalade_type_id',
     },
   };
 
@@ -89,13 +87,19 @@ class _ItemsPageState extends State<ItemsPage> {
   }
 
   Future<void> updateQuantity(int id, int newQuantity) async {
+    Map<String, dynamic> updateData;
+
+    if (widget.itemType == ItemType.box) {
+      updateData = {'quantity_in_stock': newQuantity};
+    } else {
+      updateData = {'quantity': newQuantity};
+    }
+
     await supabase
         .from(conf['itemsTable'])
-        .update({
-          'quantity_in_stock': newQuantity, // для box
-          'quantity': newQuantity, // для candy и marmalade
-        })
+        .update(updateData)
         .eq(conf['itemIdCol'], id);
+
     await loadData();
   }
 
