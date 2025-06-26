@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 
+import 'courier_panel.dart';
 import 'menu.dart';
 import 'admin_panel.dart';
 import 'recover_password.dart';
 import 'register.dart';
 import 'user_provider.dart';
-import 'package:flutter/services.dart'; // Для SystemNavigator.pop()
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -40,7 +41,7 @@ class _AuthPageState extends State<AuthPage> {
     try {
       final response = await _supabase
           .from('profiles')
-          .select()
+          .select('id, password, role')
           .eq('email', email)
           .limit(1)
           .maybeSingle();
@@ -51,22 +52,37 @@ class _AuthPageState extends State<AuthPage> {
       }
 
       final storedPassword = response['password'] as String?;
+      final userId = response['id'] as String?;
+      final role = response['role'] as String?;
 
-      if (storedPassword == null || storedPassword != password) {
+      if (storedPassword == null) {
+        _showMessage('Пароль не установлен для пользователя');
+        return;
+      }
+
+      if (storedPassword != password) {
         _showMessage('Неверный пароль');
         return;
       }
 
-      final userId = response['id'] as String;
-      final role = response['role'] as String;
+      if (userId == null || role == null) {
+        _showMessage('Ошибка данных пользователя');
+        return;
+      }
 
       Provider.of<UserProvider>(context, listen: false).setUserId(userId);
+      Provider.of<UserProvider>(context, listen: false).setUserEmail(email);
       _showMessage('Успешный вход!');
 
-      if (role == 'admin') {
+      if (role.toLowerCase() == 'admin') {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const AdminOrdersPage()),
+        );
+      } else if (role.toLowerCase() == 'courier') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const CourierPanelPage()),
         );
       } else {
         Navigator.pushReplacement(
@@ -87,6 +103,54 @@ class _AuthPageState extends State<AuthPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _showAllUsers() async {
+    try {
+      final response = await _supabase
+          .from('profiles')
+          .select('email, role, password')
+          .order('role');
+
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Пользователи системы'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: response.length,
+              itemBuilder: (_, index) {
+                final user = response[index];
+                final email = user['email'] ?? '';
+                final role = user['role'] ?? '';
+                final password = user['password'] ?? '';
+                return ListTile(
+                  title: Text(email),
+                  subtitle: Text('Роль: $role | Пароль: $password'),
+                  onTap: () {
+                    Navigator.pop(context); // Закрыть диалог
+                    setState(() {
+                      _emailController.text = email;
+                      _passwordController.text = password;
+                    });
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Закрыть'),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      _showMessage('Ошибка загрузки пользователей: $e');
+    }
   }
 
   @override
@@ -121,20 +185,17 @@ class _AuthPageState extends State<AuthPage> {
                   ),
                 ),
                 const SizedBox(height: 32),
-
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Email',
-                    style: TextStyle(fontSize: 16, color: Color(0xFF4B0082)),
-                  ),
-                ),
-                const SizedBox(height: 8),
                 TextField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
+                  inputFormatters: [
+                    // Разрешаем только латинские буквы, цифры и базовые символы email
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r"[a-zA-Z0-9@._\-+]+"),
+                    ),
+                  ],
                   decoration: InputDecoration(
-                    hintText: 'example@mail.com',
+                    hintText: 'Введите почту',
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
@@ -144,17 +205,7 @@ class _AuthPageState extends State<AuthPage> {
                   ),
                   style: const TextStyle(color: Colors.black),
                 ),
-
                 const SizedBox(height: 16),
-
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Пароль',
-                    style: TextStyle(fontSize: 16, color: Color(0xFF4B0082)),
-                  ),
-                ),
-                const SizedBox(height: 8),
                 TextField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
@@ -182,32 +233,38 @@ class _AuthPageState extends State<AuthPage> {
                   ),
                   style: const TextStyle(color: Colors.black),
                 ),
-
                 const SizedBox(height: 8),
-
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const PasswordRecoveryPage(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.flash_on,
+                        color: Color(0xFF4B0082),
+                      ),
+                      tooltip: 'Показать всех пользователей',
+                      onPressed: _showAllUsers,
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const PasswordRecoveryPage(),
+                          ),
+                        );
+                      },
+                      child: const Text(
+                        'Забыли пароль?',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w600,
                         ),
-                      );
-                    },
-                    child: const Text(
-                      'Забыли пароль?',
-                      style: TextStyle(
-                        color: Colors.red,
-                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ),
+                  ],
                 ),
-
                 const SizedBox(height: 32),
-
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF4B0082),
@@ -225,30 +282,23 @@ class _AuthPageState extends State<AuthPage> {
                       ? const CircularProgressIndicator(color: Colors.white)
                       : const Text('Войти', style: TextStyle(fontSize: 16)),
                 ),
-
                 const SizedBox(height: 16),
-
                 TextButton(
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (context) => const RegisterPage(),
-                      ),
+                      MaterialPageRoute(builder: (_) => const RegisterPage()),
                     );
                   },
                   child: const Text(
                     'Создать аккаунт',
                     style: TextStyle(
-                      color: Colors.purple,
+                      color: Colors.red,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 24),
-
-                // Кнопка выхода из приложения
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.redAccent,

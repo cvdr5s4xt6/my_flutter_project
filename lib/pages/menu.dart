@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'auth_page.dart';
-import 'big_box_page.dart';
-
+import 'items_page.dart'; // <-- Импортируем новый универсальный ItemsPage
 import 'package:provider/provider.dart';
 import 'user_provider.dart';
+import 'reviews.dart';
+import 'auth_page.dart';
 
 class MenuPage extends StatefulWidget {
   const MenuPage({super.key});
@@ -21,24 +21,26 @@ class _MenuPageState extends State<MenuPage> {
       _selectedPage = page;
       _appBarTitle = title;
     });
-    Navigator.pop(context); // Закрыть меню
+    Navigator.of(context).pop(); // закрыть drawer
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final userId = context.read<UserProvider>().userId;
+    print('Текущий userId: $userId');
   }
 
   @override
   Widget build(BuildContext context) {
-    final userId = context.read<UserProvider>().userId;
-    print('Текущий userId: $userId');
-
     return Scaffold(
       appBar: AppBar(
-        automaticallyImplyLeading: false, // скрываем стрелку назад
+        automaticallyImplyLeading: false,
         title: Text(_appBarTitle),
         leading: Builder(
           builder: (context) => IconButton(
             icon: const Icon(Icons.menu, color: Colors.yellow),
-            onPressed: () {
-              Scaffold.of(context).openDrawer();
-            },
+            onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
         actions: [
@@ -50,7 +52,6 @@ class _MenuPageState extends State<MenuPage> {
                   _appBarTitle = 'Наполнение';
                 });
               } else {
-                // Переход на страницу авторизации
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const AuthPage()),
@@ -62,7 +63,7 @@ class _MenuPageState extends State<MenuPage> {
               style: TextStyle(color: Colors.yellow, fontSize: 18),
             ),
           ),
-          const SizedBox(width: 12), // отступ справа
+          const SizedBox(width: 12),
         ],
       ),
       drawer: Drawer(
@@ -91,24 +92,33 @@ class _MenuPageState extends State<MenuPage> {
                     'Большая коробка',
                     style: TextStyle(color: Colors.white70),
                   ),
-                  onTap: () =>
-                      _selectPage(const BigBoxPage(), 'Большая коробка'),
+                  onTap: () => _selectPage(
+                    const ItemsPage(itemType: ItemType.box, boxSize: 'Большая'),
+                    'Большая коробка',
+                  ),
                 ),
                 ListTile(
                   title: const Text(
                     'Средняя коробка',
                     style: TextStyle(color: Colors.white70),
                   ),
-                  onTap: () =>
-                      _selectPage(const BigBoxPage(), 'Средняя коробка'),
+                  onTap: () => _selectPage(
+                    const ItemsPage(itemType: ItemType.box, boxSize: 'Средняя'),
+                    'Средняя коробка',
+                  ),
                 ),
                 ListTile(
                   title: const Text(
                     'Маленькая коробка',
                     style: TextStyle(color: Colors.white70),
                   ),
-                  onTap: () =>
-                      _selectPage(const BigBoxPage(), 'Маленькая коробка'),
+                  onTap: () => _selectPage(
+                    const ItemsPage(
+                      itemType: ItemType.box,
+                      boxSize: 'Маленькая',
+                    ),
+                    'Маленькая коробка',
+                  ),
                 ),
               ],
             ),
@@ -117,62 +127,53 @@ class _MenuPageState extends State<MenuPage> {
               iconColor: Colors.white,
               textColor: Colors.white,
               collapsedTextColor: Colors.white,
-              title: const Text('2 Раздел Сладости'),
+              title: const Text('2 Раздел Конфеты'),
               children: [
-                ExpansionTile(
-                  collapsedIconColor: Colors.white70,
-                  iconColor: Colors.white70,
-                  textColor: Colors.white70,
-                  collapsedTextColor: Colors.white70,
-                  title: const Text('Конфеты'),
-                  children: [
-                    ListTile(
-                      title: const Text(
-                        'Чёрный',
-                        style: TextStyle(color: Colors.white54),
-                      ),
-                      onTap: () => _selectPage(const BigBoxPage(), 'Черный'),
-                    ),
-                    ListTile(
-                      title: const Text(
-                        'Молочный',
-                        style: TextStyle(color: Colors.white54),
-                      ),
-                      onTap: () => _selectPage(const BigBoxPage(), 'Молочный'),
-                    ),
-                    ListTile(
-                      title: const Text(
-                        'Белый',
-                        style: TextStyle(color: Colors.white54),
-                      ),
-                      onTap: () => _selectPage(const BigBoxPage(), 'Белый'),
-                    ),
-                  ],
-                ),
-                ExpansionTile(
-                  collapsedIconColor: Colors.white70,
-                  iconColor: Colors.white70,
-                  textColor: Colors.white70,
-                  collapsedTextColor: Colors.white70,
-                  title: const Text('Мармелад'),
-                  children: [
-                    ListTile(
-                      title: const Text(
-                        'Сладкий',
-                        style: TextStyle(color: Colors.white54),
-                      ),
-                      onTap: () => _selectPage(const BigBoxPage(), 'Сладкий'),
-                    ),
-                    ListTile(
-                      title: const Text(
-                        'Кислый',
-                        style: TextStyle(color: Colors.white54),
-                      ),
-                      onTap: () => _selectPage(const BigBoxPage(), 'Кислый'),
-                    ),
-                  ],
+                ListTile(
+                  title: const Text(
+                    'Все конфеты',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                  onTap: () => _selectPage(
+                    const ItemsPage(itemType: ItemType.candy),
+                    'Конфеты',
+                  ),
                 ),
               ],
+            ),
+            ExpansionTile(
+              collapsedIconColor: Colors.white,
+              iconColor: Colors.white,
+              textColor: Colors.white,
+              collapsedTextColor: Colors.white,
+              title: const Text('3 Раздел Мармелад'),
+              children: [
+                ListTile(
+                  title: const Text(
+                    'Весь мармелад',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                  onTap: () => _selectPage(
+                    const ItemsPage(itemType: ItemType.marmalade),
+                    'Мармелад',
+                  ),
+                ),
+              ],
+            ),
+            const Divider(color: Colors.white54, thickness: 1),
+            ListTile(
+              leading: const Icon(Icons.rate_review, color: Colors.yellow),
+              title: const Text(
+                'Отзывы',
+                style: TextStyle(color: Colors.yellow, fontSize: 18),
+              ),
+              onTap: () {
+                Navigator.pop(context); // Закрыть drawer
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => ReviewsPage()),
+                );
+              },
             ),
           ],
         ),

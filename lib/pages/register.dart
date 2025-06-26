@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // для FilteringTextInputFormatter
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:uuid/uuid.dart'; // Добавь в pubspec.yaml: uuid: ^3.0.6
+import 'package:uuid/uuid.dart';
 
 class RegisterPage extends StatefulWidget {
-  const RegisterPage({super.key});
+  final String? userId; // Передаём userId для проверки роли
+
+  const RegisterPage({Key? key, this.userId}) : super(key: key);
 
   @override
   State<RegisterPage> createState() => _RegisterPageState();
@@ -19,8 +22,56 @@ class _RegisterPageState extends State<RegisterPage> {
   final TextEditingController _roleController = TextEditingController();
 
   final SupabaseClient _supabase = Supabase.instance.client;
+
   bool _obscurePassword = true;
   bool _obscurePasswordConfirm = true;
+  bool _roleFieldEnabled = false; // Можно ли менять роль (нельзя)
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoleByUserId();
+  }
+
+  Future<void> _loadRoleByUserId() async {
+    if (widget.userId == null) {
+      setState(() {
+        _roleController.text = 'user';
+        _roleFieldEnabled = false;
+      });
+      return;
+    }
+
+    try {
+      final profile = await _supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', widget.userId!)
+          .maybeSingle();
+
+      if (profile != null) {
+        final role = profile['role'] as String? ?? 'user';
+
+        setState(() {
+          _roleController.text = role == 'admin' ? 'courier' : 'user';
+          _roleFieldEnabled = false;
+        });
+      } else {
+        setState(() {
+          _roleController.text = 'user';
+          _roleFieldEnabled = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _roleController.text = 'user';
+        _roleFieldEnabled = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка загрузки роли: ${e.toString()}')),
+      );
+    }
+  }
 
   Future<void> _signUp() async {
     final email = _emailController.text.trim();
@@ -45,32 +96,24 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
 
-    final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
+    final emailRegex = RegExp(r'^[^@]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
     if (!emailRegex.hasMatch(email)) {
       _showMessage('Некорректный email');
       return;
     }
 
     try {
-      // Генерируем UUID вручную
       var uuid = const Uuid();
       String id = uuid.v4();
 
-      final insertResponse = await _supabase.from('profiles').insert({
+      final response = await _supabase.from('profiles').insert({
         'id': id,
         'first_name': firstName,
         'last_name': lastName,
         'email': email,
         'role': role,
-        'password': password, // НЕ рекомендуется хранить пароль в открытом виде
+        'password': password,
       });
-
-      if (insertResponse.error != null) {
-        _showMessage(
-          'Ошибка при сохранении профиля: ${insertResponse.error!.message}',
-        );
-        return;
-      }
 
       _showMessage('Регистрация успешна!');
       Navigator.pop(context);
@@ -83,6 +126,32 @@ class _RegisterPageState extends State<RegisterPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Widget _buildLabeledField(
+    String hint,
+    TextEditingController controller, {
+    TextInputType keyboardType = TextInputType.text,
+    bool enabled = true,
+    List<TextInputFormatter>? inputFormatters,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      enabled: enabled,
+      inputFormatters: inputFormatters,
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: Color(0xFF666666), fontSize: 16),
+        filled: true,
+        fillColor: enabled ? Colors.white : Colors.grey[300],
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+      ),
+      style: TextStyle(color: enabled ? Colors.black : Colors.grey[700]),
+    );
   }
 
   @override
@@ -118,37 +187,60 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
                 const SizedBox(height: 32),
 
-                _buildLabeledField('Имя', _firstNameController),
-                const SizedBox(height: 16),
-                _buildLabeledField('Фамилия', _lastNameController),
-                const SizedBox(height: 16),
+                // Имя - разрешены только буквы a-zA-Z и кириллица
                 _buildLabeledField(
-                  'Роль (например, user или admin)',
-                  _roleController,
-                ),
-                const SizedBox(height: 16),
-                _buildLabeledField(
-                  'Email',
-                  _emailController,
-                  keyboardType: TextInputType.emailAddress,
+                  'Имя',
+                  _firstNameController,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'[а-яА-Яa-zA-ZёЁ]'),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
 
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Пароль',
-                    style: TextStyle(fontSize: 16, color: Color(0xFF4B0082)),
-                  ),
+                // Фамилия - тоже только буквы
+                _buildLabeledField(
+                  'Фамилия',
+                  _lastNameController,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'[а-яА-Яa-zA-ZёЁ]'),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 16),
+
+                _buildLabeledField(
+                  'Введите user',
+                  _roleController,
+                  enabled: _roleFieldEnabled,
+                ),
+                const SizedBox(height: 16),
+
+                // Почта - запрет русских букв, разрешены английские и спецсимволы для email
+                _buildLabeledField(
+                  'Почта',
+                  _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.deny(RegExp(r'[а-яА-ЯёЁ]')),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Пароль
                 TextField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
-                    hintText: 'Введите пароль',
+                    hintText: 'Пароль',
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF666666),
+                      fontSize: 16,
+                    ),
                     filled: true,
-                    fillColor: const Color(0xFF4B0082).withOpacity(0.1),
+                    fillColor: Colors.white,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -171,21 +263,18 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
                 const SizedBox(height: 16),
 
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Подтвердите пароль',
-                    style: TextStyle(fontSize: 16, color: Color(0xFF4B0082)),
-                  ),
-                ),
-                const SizedBox(height: 8),
+                // Подтверждение пароля
                 TextField(
                   controller: _passwordConfirmController,
                   obscureText: _obscurePasswordConfirm,
                   decoration: InputDecoration(
-                    hintText: 'Повторите пароль',
+                    hintText: 'Подтвердите пароль',
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF666666),
+                      fontSize: 16,
+                    ),
                     filled: true,
-                    fillColor: const Color(0xFF4B0082).withOpacity(0.1),
+                    fillColor: Colors.white,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -227,7 +316,6 @@ class _RegisterPageState extends State<RegisterPage> {
                     style: TextStyle(fontSize: 16),
                   ),
                 ),
-
                 const SizedBox(height: 16),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
@@ -241,37 +329,6 @@ class _RegisterPageState extends State<RegisterPage> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildLabeledField(
-    String label,
-    TextEditingController controller, {
-    TextInputType keyboardType = TextInputType.text,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 16, color: Color(0xFF4B0082)),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          keyboardType: keyboardType,
-          decoration: InputDecoration(
-            hintText: label,
-            filled: true,
-            fillColor: const Color(0xFF4B0082).withOpacity(0.1),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-          ),
-          style: const TextStyle(color: Colors.black),
-        ),
-      ],
     );
   }
 }

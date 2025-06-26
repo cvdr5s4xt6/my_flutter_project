@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:provider/provider.dart';
-import 'user_provider.dart';
-import 'pokypki_page.dart';
-
 enum ItemType { box, candy, marmalade }
 
 class ItemsPage extends StatefulWidget {
@@ -20,7 +16,7 @@ class ItemsPage extends StatefulWidget {
 class _ItemsPageState extends State<ItemsPage> {
   final supabase = Supabase.instance.client;
 
-  late final Map<String, dynamic> conf;
+  late Map<String, dynamic> conf;
   List<Map<String, dynamic>> items = [];
   Map<int, String> typeMap = {};
   Map<int, int> cart = {};
@@ -45,8 +41,9 @@ class _ItemsPageState extends State<ItemsPage> {
       'itemsTable': 'candies',
       'itemIdCol': 'candy_id',
       'itemQuantityCol': 'quantity',
-      'fields': 'candy_id, name, quantity, candy_type_id, photo',
-      'filterCol': 'candy_type_id',
+      'fields':
+          'candy_id, name, quantity, candy_type_id, photo', // Убрали color_id
+      'filterCol': 'candy_type_id', // фильтрация по candy_type_id
     },
     ItemType.marmalade: {
       'typeTable': 'marmalade_types',
@@ -55,8 +52,9 @@ class _ItemsPageState extends State<ItemsPage> {
       'itemsTable': 'marmalades',
       'itemIdCol': 'marmalade_id',
       'itemQuantityCol': 'quantity',
-      'fields': 'marmalade_id, name, quantity, marmalade_type_id, photo',
-      'filterCol': 'marmalade_type_id',
+      'fields':
+          'marmalade_id, name, quantity, marmalade_type_id, photo', // Убрали color_id
+      'filterCol': 'marmalade_type_id', // фильтрация по marmalade_type_id
     },
   };
 
@@ -72,16 +70,14 @@ class _ItemsPageState extends State<ItemsPage> {
 
     final typeResponse = await supabase.from(conf['typeTable']).select();
     typeMap = {
-      for (final t in typeResponse)
+      for (var t in typeResponse)
         t[conf['typeIdCol']] as int: t[conf['typeNameCol']] as String,
     };
 
     var query = supabase.from(conf['itemsTable']).select(conf['fields']);
-    // фильтрация по размеру коробки, если box
     if (widget.itemType == ItemType.box && widget.boxSize != null) {
       query = query.eq('size', widget.boxSize!);
     }
-    // фильтр по цвету/типу
     if (selectedFilterId != null) {
       query = query.eq(conf['filterCol'], selectedFilterId!);
     }
@@ -96,100 +92,42 @@ class _ItemsPageState extends State<ItemsPage> {
     await supabase
         .from(conf['itemsTable'])
         .update({
-          if (widget.itemType == ItemType.box) 'quantity_in_stock': newQuantity,
-          if (widget.itemType != ItemType.box) 'quantity': newQuantity,
+          'quantity_in_stock': newQuantity, // для box
+          'quantity': newQuantity, // для candy и marmalade
         })
         .eq(conf['itemIdCol'], id);
-
     await loadData();
   }
 
   void addToCart(int id, int currentQuantity) {
-    if (currentQuantity <= 0) return;
-
-    setState(() => cart[id] = (cart[id] ?? 0) + 1);
-    updateQuantity(id, currentQuantity - 1);
+    if (currentQuantity > 0) {
+      setState(() {
+        cart[id] = (cart[id] ?? 0) + 1;
+      });
+      updateQuantity(id, currentQuantity - 1);
+    }
   }
 
   void removeFromCart(int id, int currentQuantity) {
-    final currentInCart = cart[id] ?? 0;
-    if (currentInCart <= 0) return;
-
-    setState(() {
-      if (currentInCart == 1) {
-        cart.remove(id);
-      } else {
-        cart[id] = currentInCart - 1;
-      }
-    });
-    updateQuantity(id, currentQuantity + 1);
-  }
-
-  void navigateToCartPage() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PokypkiPage(
-          boxes: items,
-          cart: cart,
-          colorMap: widget.itemType == ItemType.box ? typeMap : {},
-          addToCart: (boxId) async {
-            final box = items.firstWhere((b) => b[conf['itemIdCol']] == boxId);
-            final currentQuantity = box[conf['itemQuantityCol']] as int;
-            if (currentQuantity > 0) {
-              setState(() {
-                cart[boxId] = (cart[boxId] ?? 0) + 1;
-              });
-              await updateQuantity(boxId, currentQuantity - 1);
-            }
-          },
-          removeFromCart: (boxId) async {
-            if (cart.containsKey(boxId) && cart[boxId]! > 0) {
-              final box = items.firstWhere(
-                (b) => b[conf['itemIdCol']] == boxId,
-              );
-              final currentQuantity = box[conf['itemQuantityCol']] as int;
-              setState(() {
-                cart[boxId] = cart[boxId]! - 1;
-                if (cart[boxId]! <= 0) {
-                  cart.remove(boxId);
-                }
-              });
-              await updateQuantity(boxId, currentQuantity + 1);
-            }
-          },
-        ),
-      ),
-    );
+    if (cart[id] != null && cart[id]! > 0) {
+      setState(() {
+        cart[id] = cart[id]! - 1;
+        if (cart[id]! <= 0) cart.remove(id);
+      });
+      updateQuantity(id, currentQuantity + 1);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final userId = context.read<UserProvider>().userId;
-    print('Текущий userId: $userId');
-
     final title = {
       ItemType.box: 'Коробки',
       ItemType.candy: 'Конфеты',
       ItemType.marmalade: 'Мармелад',
     }[widget.itemType]!;
 
-    final typeIdKey = {
-      ItemType.box: 'color_id',
-      ItemType.candy: 'candy_type_id',
-      ItemType.marmalade: 'marmalade_type_id',
-    }[widget.itemType]!;
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-        actions: [
-          IconButton(
-            onPressed: navigateToCartPage,
-            icon: const Icon(Icons.shopping_cart),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: Text(title)),
       body: Column(
         children: [
           Padding(
@@ -218,7 +156,7 @@ class _ItemsPageState extends State<ItemsPage> {
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : items.isEmpty
-                ? Center(child: Text('Нет доступных ${title.toLowerCase()}'))
+                ? Center(child: Text('Нет доступных $title'.toLowerCase()))
                 : ListView.builder(
                     itemCount: items.length,
                     itemBuilder: (_, i) {
@@ -226,6 +164,11 @@ class _ItemsPageState extends State<ItemsPage> {
                       final id = item[conf['itemIdCol']] as int;
                       final photo = item['photo'] as String?;
                       final quantity = item[conf['itemQuantityCol']] as int;
+                      final typeIdKey = widget.itemType == ItemType.box
+                          ? 'color_id'
+                          : widget.itemType == ItemType.candy
+                          ? 'candy_type_id'
+                          : 'marmalade_type_id';
                       final typeName = typeMap[item[typeIdKey]] ?? 'Неизвестно';
 
                       return Card(
@@ -280,13 +223,13 @@ class _ItemsPageState extends State<ItemsPage> {
                                   ),
                                   IconButton(
                                     icon: const Icon(Icons.remove),
-                                    onPressed: (cart[id] ?? 0) > 0
+                                    onPressed: cart.containsKey(id)
                                         ? () => removeFromCart(id, quantity)
                                         : null,
                                   ),
                                 ],
                               ),
-                              if ((cart[id] ?? 0) > 0)
+                              if (cart.containsKey(id))
                                 Center(
                                   child: Text(
                                     'В корзине: ${cart[id]}',
